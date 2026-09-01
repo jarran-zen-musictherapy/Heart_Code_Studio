@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ACPR Studio — heartbeat beat-detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F12; --panel:#141C21; --panel2:#1B252B; --line:#26333A;
+    --ink:#E9E7E1; --mut:#7E8C93; --dim:#546067;
+    --pulse:#EC6A4E;        /* S1 / life / warmth */
+    --pulse-soft:#EC6A4E33;
+    --mon:#57B4A9;          /* monitor / structure / S2 */
+    --mon-soft:#57B4A926;
+    --warn:#E0B450;
+    --r:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:18px;max-width:1120px;margin:0 auto;padding-bottom:60px}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--mon);margin:0 0 3px}
+  header{display:flex;align-items:flex-end;justify-content:space-between;
+    gap:16px;margin-bottom:16px;flex-wrap:wrap}
+  header .sub{color:var(--mut);font-size:12.5px;max-width:52ch;margin-top:4px;line-height:1.5}
+  .tag{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--dim);
+    border:1px solid var(--line);border-radius:99px;padding:3px 9px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:14px;margin-bottom:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .grow{flex:1 1 auto}
+  label.fld{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--mut);
+    font-family:"JetBrains Mono",monospace;letter-spacing:.04em}
+  .slider-row{display:flex;align-items:center;gap:10px}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:99px;
+    background:var(--line);width:150px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+    border-radius:50%;background:var(--pulse);border:2px solid var(--bg);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;
+    background:var(--pulse);border:2px solid var(--bg);cursor:pointer}
+  .val{min-width:52px;text-align:right;color:var(--ink);font-size:12px}
+  input[type=number]{width:72px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--ink);border-radius:7px;padding:6px 8px;font-family:"JetBrains Mono",monospace;font-size:12px}
+
+  button{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;cursor:pointer;
+    border-radius:8px;padding:9px 14px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--ink);transition:.14s border-color,.14s background,.14s transform}
+  button:hover{border-color:var(--mon)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--pulse);color:#1a0d08;border-color:var(--pulse)}
+  button.primary:hover{background:#f2795f}
+  button.ghost{background:transparent}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:none;border-radius:0;border-right:1px solid var(--line);background:transparent;padding:8px 12px}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--mon-soft);color:var(--mon)}
+
+  .filedrop{border:1.5px dashed var(--line);border-radius:var(--r);padding:20px;text-align:center;
+    color:var(--mut);font-size:13px;transition:.15s;cursor:pointer}
+  .filedrop.hot{border-color:var(--pulse);color:var(--ink);background:var(--pulse-soft)}
+  .filedrop b{color:var(--ink)}
+
+  #stage{position:relative;width:100%;background:#080B0D;border:1px solid var(--line);
+    border-radius:var(--r);overflow:hidden;touch-action:none}
+  canvas{display:block;width:100%;height:300px}
+  #hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--dim);font-family:"JetBrains Mono",monospace;font-size:12px;pointer-events:none;text-align:center;padding:20px}
+
+  .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline}
+  .stat .k{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--mut)}
+  .stat .v{font-family:"JetBrains Mono",monospace;font-size:26px;font-weight:700;color:var(--ink);line-height:1.05}
+  .stat .v.big{color:var(--pulse)}
+  .stat .u{font-size:12px;color:var(--mut);margin-left:3px}
+  .conf{font-size:11px;font-family:"JetBrains Mono",monospace;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+  .conf.good{color:var(--mon);border-color:var(--mon-soft)}
+  .conf.mid{color:var(--warn);border-color:#E0B45033}
+  .conf.low{color:var(--pulse);border-color:var(--pulse-soft)}
+
+  .divider{height:1px;background:var(--line);margin:12px 0}
+  .muted{color:var(--mut);font-size:12px;line-height:1.5}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--mut)}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--mon);font-size:12px;font-family:"JetBrains Mono",monospace}
+  code{font-family:"JetBrains Mono",monospace;color:var(--warn);font-size:11.5px}
+  @media (max-width:640px){canvas{height:230px}.stat .v{font-size:21px}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <p class="eyebrow">ACPR Studio · v0.1</p>
+    <h1>Heartbeat beat-detection</h1>
+    <p class="sub">Isolate, detect and slice amplified cardiopulmonary recordings - entirely on this device.</p>
+  </div>
+  <span class="tag">on-device · no data leaves</span>
+</header>
+
+<!-- INGEST -->
+<div class="panel">
+  <div class="row">
+    <div class="filedrop grow" id="drop">
+      <b>Drop a recording</b> or tap to choose · wav · mp3 · m4a · mp4/mov*
+      <input type="file" id="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.mp4,.mov,.ogg,.aac" hidden>
+    </div>
+    <button class="ghost" id="genBtn">Generate synthetic ♥</button>
+  </div>
+  <p class="muted" id="ingestNote" style="margin:10px 0 0">*<code>.mov/.mp4</code> audio decodes natively on iPad Safari. If a video fails to decode here, extract the audio once (or use the ffmpeg local build) — flagged for you, not a real limit of the method.</p>
+</div>
+
+<!-- SYNTH CONTROLS -->
+<div class="panel" id="synthPanel" hidden>
+  <p class="eyebrow" style="color:var(--pulse)">Synthetic phonocardiogram</p>
+  <div class="row" style="gap:18px">
+    <label class="fld">Heart rate
+      <div class="slider-row"><input type="range" id="sBpm" min="40" max="160" value="72"><span class="val mono" id="sBpmV">72</span></div></label>
+    <label class="fld">Noise
+      <div class="slider-row"><input type="range" id="sNoise" min="0" max="100" value="18"><span class="val mono" id="sNoiseV">18%</span></div></label>
+    <label class="fld">Tempo jitter
+      <div class="slider-row"><input type="range" id="sJit" min="0" max="100" value="12"><span class="val mono" id="sJitV">12%</span></div></label>
+    <label class="fld">Length
+      <div class="slider-row"><input type="range" id="sLen" min="5" max="30" value="12"><span class="val mono" id="sLenV">12s</span></div></label>
+    <button class="primary" id="sMake" style="align-self:flex-end">Build recording</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0">Push noise & jitter up to watch the detector degrade — that failure curve is a figure in the methods paper.</p>
+</div>
+
+<!-- STAGE -->
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="hint">load or generate a recording to begin</div>
+</div>
+
+<!-- TRANSPORT + MARKER MODE -->
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <div class="row">
+      <button id="play" disabled>▶ Play</button>
+      <label class="fld" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="clicks" checked><span style="text-transform:none;letter-spacing:0">Click on each beat (ear check)</span></label>
+      <label class="fld" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="hearFilt" checked><span style="text-transform:none;letter-spacing:0">Play isolated (filtered)</span></label>
+    </div>
+    <div class="seg" title="Tap empty stage = add · drag pin = move · double-tap pin = delete">
+      <span style="padding:8px 10px;color:var(--mut);font-family:'JetBrains Mono';font-size:11px">markers</span>
+      <button id="mClear" class="ghost">Clear</button>
+      <button id="mRedetect" class="ghost">Re-detect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYSIS PARAMS -->
+<div class="panel">
+  <p class="eyebrow">Detection parameters — tune, don't trust</p>
+  <div class="row" style="gap:22px">
+    <label class="fld">Band-pass low
+      <div class="slider-row"><input type="range" id="pLo" min="10" max="120" value="20"><span class="val mono" id="pLoV">20 Hz</span></div></label>
+    <label class="fld">Band-pass high
+      <div class="slider-row"><input type="range" id="pHi" min="80" max="400" value="200"><span class="val mono" id="pHiV">200 Hz</span></div></label>
+    <label class="fld">Sensitivity
+      <div class="slider-row"><input type="range" id="pSens" min="0" max="200" value="60"><span class="val mono" id="pSensV">0.60</span></div></label>
+    <label class="fld">Max heart rate (refractory)
+      <div class="slider-row"><input type="range" id="pMax" min="90" max="220" value="180"><span class="val mono" id="pMaxV">180</span></div></label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px;align-self:flex-end">
+      <input type="checkbox" id="pS1" checked><span style="text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink)">S1 only (reject the dub)</span></label>
+  </div>
+  <div class="legend" style="margin-top:12px">
+    <span><span class="swatch" style="background:var(--dim)"></span>filtered wave</span>
+    <span><span class="swatch" style="background:var(--mon)"></span>Shannon-energy envelope</span>
+    <span><span class="swatch" style="background:var(--warn)"></span>threshold</span>
+    <span><span class="swatch" style="background:var(--pulse)"></span>detected S1</span>
+  </div>
+</div>
+
+<!-- READOUT -->
+<div class="panel">
+  <div class="readout">
+    <div class="stat"><div class="k">Heart rate</div><div><span class="v big mono" id="oBpm">—</span><span class="u">bpm</span></div></div>
+    <div class="stat"><div class="k">Beats (S1)</div><div><span class="v mono" id="oN">—</span></div></div>
+    <div class="stat"><div class="k">Regularity (IBI CV)</div><div><span class="v mono" id="oCv">—</span><span class="u">%</span></div></div>
+    <div class="stat"><div class="k">Detection confidence</div><div style="margin-top:6px"><span class="conf" id="oConf">—</span></div></div>
+  </div>
+</div>
+
+<!-- EXPORT -->
+<div class="panel">
+  <p class="eyebrow" style="color:var(--pulse)">Export — DAW-ready</p>
+  <div class="row">
+    <button id="exFilt" disabled>Isolated heartbeat · WAV</button>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px">
+      <span style="text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink)">Quantise loop to</span>
+      <input type="number" id="qBpm" value="72" min="30" max="200"><span class="mono" style="color:var(--mut);font-size:12px">bpm</span></label>
+    <button id="exLoop" disabled>Steady loop · WAV</button>
+    <button id="exJson" class="ghost" disabled>Session · JSON</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0">The steady loop retimes each detected beat to an even grid — real hearts drift; a loop needs to lock. Drop it under the song at the same bpm.</p>
+</div>
+
+<details>
+  <summary>What the algorithm does (for the methods paper)</summary>
+  <p class="muted" style="margin-top:8px">
+  Signal is mixed to mono and band-passed with a cascaded biquad (2× high-pass + 2× low-pass, ≈24 dB/oct) to the heart-sound band, suppressing voice and handling noise. The envelope is the <b>normalised average Shannon energy</b> (Liang, Lukkarinen & Hartimo, 1997) over ~20 ms frames — Shannon energy emphasises the medium-intensity valve sounds and suppresses both low-level noise and rare high spikes better than plain energy. Peaks are picked above an adaptive threshold (mean + k·σ on the normalised envelope), with a physiological refractory period derived from the max-heart-rate control removing duplicates. S1-vs-S2 disambiguation exploits that systole (S1→S2) is the shorter, more consistent interval and that S1 is typically the louder, lower-frequency sound at the apex: the tool scores the two alternating phase candidates on amplitude and regularity and keeps the winning set as S1. Every marker remains hand-correctable — the clinician is the final arbiter, which is both a safety property and an honest admission of the algorithm's limits.
+  </p>
+</details>
+
+<script>
+"use strict";
+const AC = window.AudioContext || window.webkitAudioContext;
+let actx = null;
+function ctx(){ if(!actx) actx = new AC(); if(actx.state==="suspended") actx.resume(); return actx; }
+
+const $ = id => document.getElementById(id);
+const cv = $("cv"), g = cv.getContext("2d");
+
+// ---- state ----
+let rawBuf=null;        // decoded AudioBuffer (original)
+let filtMono=null;      // Float32Array, filtered mono @ sr
+let sr=48000;
+let dur=0;
+let env=null;           // {t:Float32Array, v:Float32Array} normalised Shannon envelope
+let thr=0;              // threshold used
+let markers=[];         // seconds (S1)
+let playing=false, srcNode=null, playStart=0, playOffset=0, clickNodes=[];
+
+// ---- helpers ----
+const fmt = (x,d=0)=> (x==null||isNaN(x))? "—" : x.toFixed(d);
+function setBusy(b){ document.body.style.cursor = b?"progress":"default"; }
+
+// ================= DECODE / INGEST =================
+async function loadFile(file){
+  try{
+    const ab = await file.arrayBuffer();
+    let buf;
+    try{ buf = await ctx().decodeAudioData(ab.slice(0)); }
+    catch(e){
+      $("hint").textContent = "couldn't decode this file here — extract the audio once, or use the local ffmpeg build (flagged, not a method limit)";
+      $("hint").style.display="flex"; return;
+    }
+    await useBuffer(buf);
+  }catch(e){ console.error(e); }
+}
+
+async function useBuffer(buf){
+  rawBuf = buf; sr = buf.sampleRate; dur = buf.duration;
+  await analyse();               // filter + envelope + detect
+  $("hint").style.display="none";
+  $("play").disabled=false; $("exFilt").disabled=false; $("exLoop").disabled=false; $("exJson").disabled=false;
+  draw();
+}
+
+// ================= FILTER (offline biquad cascade) =================
+function toMono(buf){
+  const n=buf.length, out=new Float32Array(n), ch=buf.numberOfChannels;
+  for(let c=0;c<ch;c++){ const d=buf.getChannelData(c); for(let i=0;i<n;i++) out[i]+=d[i]; }
+  const inv=1/ch; for(let i=0;i<n;i++) out[i]*=inv;
+  return out;
+}
+async function bandpass(monoF32, lo, hi){
+  const n=monoF32.length;
+  const oac = new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(1,n,sr);
+  const b=oac.createBuffer(1,n,sr); b.copyToChannel(monoF32,0);
+  const s=oac.createBufferSource(); s.buffer=b;
+  const mk=(type,f)=>{const q=oac.createBiquadFilter();q.type=type;q.frequency.value=f;q.Q.value=0.707;return q;};
+  const h1=mk("highpass",lo),h2=mk("highpass",lo),l1=mk("lowpass",hi),l2=mk("lowpass",hi);
+  s.connect(h1);h1.connect(h2);h2.connect(l1);l1.connect(l2);l2.connect(oac.destination);
+  s.start();
+  const r=await oac.startRendering();
+  return r.getChannelData(0).slice();
+}
+
+// ================= SHANNON-ENERGY ENVELOPE =================
+function shannonEnvelope(x){
+  // normalise to max abs 1
+  let m=1e-9; for(let i=0;i<x.length;i++){const a=Math.abs(x[i]); if(a>m)m=a;}
+  const inv=1/m;
+  const frame=Math.round(0.02*sr), hop=Math.round(0.01*sr);
+  const nF=Math.max(1,Math.floor((x.length-frame)/hop));
+  const t=new Float32Array(nF), e=new Float32Array(nF);
+  for(let f=0;f<nF;f++){
+    const s0=f*hop; let acc=0;
+    for(let i=0;i<frame;i++){ let v=x[s0+i]*inv; v=v*v; if(v>1e-10) acc += -v*Math.log(v); }
+    e[f]=acc/frame; t[f]=(s0+frame/2)/sr;
+  }
+  // normalise: (E - mean)/std  -> "normalised average Shannon energy"
+  let mean=0; for(let i=0;i<nF;i++) mean+=e[i]; mean/=nF;
+  let sd=0; for(let i=0;i<nF;i++){const d=e[i]-mean; sd+=d*d;} sd=Math.sqrt(sd/nF)||1e-9;
+  for(let i=0;i<nF;i++) e[i]=(e[i]-mean)/sd;
+  return {t,v:e};
+}
+
+// ================= PEAK PICK + S1/S2 =================
+function detect(){
+  if(!env) return;
+  const sens = (+$("pSens").value)/100;          // threshold on normalised env
+  thr = sens;
+  const maxHR = +$("pMax").value;
+  const refr = 60/maxHR;                          // min seconds between accepted beats
+  const {t,v}=env;
+  // local maxima above threshold
+  let cand=[];
+  for(let i=1;i<v.length-1;i++){
+    if(v[i]>=thr && v[i]>v[i-1] && v[i]>=v[i+1]) cand.push({t:t[i],v:v[i]});
+  }
+  // refractory: within refr keep the taller
+  cand.sort((a,b)=>a.t-b.t);
+  let peaks=[];
+  for(const c of cand){
+    if(peaks.length && c.t-peaks[peaks.length-1].t < refr){
+      if(c.v>peaks[peaks.length-1].v) peaks[peaks.length-1]=c;
+    } else peaks.push(c);
+  }
+  // S1-only disambiguation
+  if($("pS1").checked && peaks.length>=4){
+    const score = set=>{
+      if(set.length<3) return {cv:9,amp:0};
+      let ib=[]; for(let i=1;i<set.length;i++) ib.push(set[i].t-set[i-1].t);
+      const mu=ib.reduce((a,b)=>a+b,0)/ib.length;
+      const sd=Math.sqrt(ib.reduce((a,b)=>a+(b-mu)*(b-mu),0)/ib.length);
+      const amp=set.reduce((a,b)=>a+b.v,0)/set.length;
+      return {cv:(sd/mu), amp};
+    };
+    const ev=peaks.filter((_,i)=>i%2===0), od=peaks.filter((_,i)=>i%2===1);
+    const se=score(ev), so=score(od);
+    // prefer lower CV (regular) and higher amplitude (S1 louder); combine
+    const je = se.cv - 0.35*se.amp, jo = so.cv - 0.35*so.amp;
+    peaks = (je<=jo)? ev : od;
+  }
+  markers = peaks.map(p=>p.t);
+  updateReadout();
+}
+
+function updateReadout(){
+  const n=markers.length;
+  $("oN").textContent = n||"—";
+  if(n>=2){
+    let ib=[]; for(let i=1;i<n;i++) ib.push(markers[i]-markers[i-1]);
+    ib.sort((a,b)=>a-b);
+    const med = ib[Math.floor(ib.length/2)];
+    const bpm = 60/med;
+    const mu=ib.reduce((a,b)=>a+b,0)/ib.length;
+    const sd=Math.sqrt(ib.reduce((a,b)=>a+(b-mu)*(b-mu),0)/ib.length);
+    const cvp = 100*sd/mu;
+    $("oBpm").textContent = Math.round(bpm);
+    $("oCv").textContent = fmt(cvp,1);
+    $("qBpm").value = Math.round(bpm);
+    const c=$("oConf");
+    if(cvp<8){c.textContent="high";c.className="conf good";}
+    else if(cvp<18){c.textContent="moderate";c.className="conf mid";}
+    else {c.textContent="low — eyeball it";c.className="conf low";}
+  } else { $("oBpm").textContent="—"; $("oCv").textContent="—"; $("oConf").textContent="—"; $("oConf").className="conf"; }
+}
+
+async function analyse(){
+  setBusy(true);
+  const mono = toMono(rawBuf);
+  filtMono = await bandpass(mono, +$("pLo").value, +$("pHi").value);
+  env = shannonEnvelope(filtMono);
+  detect();
+  setBusy(false);
+  draw();
+}
+
+// ================= DRAW =================
+function resizeCanvas(){
+  const rect=cv.getBoundingClientRect();
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=Math.round(rect.width*dpr); cv.height=Math.round(rect.height*dpr);
+  g.setTransform(dpr,0,0,dpr,0,0);
+  return {w:rect.width,h:rect.height};
+}
+function draw(){
+  const {w,h}=resizeCanvas();
+  g.clearRect(0,0,w,h);
+  if(!filtMono){ return; }
+  const midWave=h*0.34, waveH=h*0.28, envY0=h*0.62, envH=h*0.30;
+  // waveform (min/max per px)
+  g.strokeStyle="#546067"; g.lineWidth=1; g.beginPath();
+  const N=filtMono.length, spp=N/w;
+  let peak=0; for(let i=0;i<N;i+=Math.max(1,Math.floor(spp/4))){const a=Math.abs(filtMono[i]);if(a>peak)peak=a;}
+  const norm = peak>0? (waveH/2)/peak : 1;
+  for(let px=0;px<w;px++){
+    let lo=1,hi=-1; const a=Math.floor(px*spp),b=Math.floor((px+1)*spp);
+    for(let i=a;i<b;i++){const s=filtMono[i]; if(s<lo)lo=s; if(s>hi)hi=s;}
+    g.moveTo(px, midWave - hi*norm); g.lineTo(px, midWave - lo*norm);
+  }
+  g.stroke();
+  // envelope
+  if(env){
+    const {t,v}=env;
+    let emin=Infinity,emax=-Infinity;
+    for(let i=0;i<v.length;i++){if(v[i]<emin)emin=v[i];if(v[i]>emax)emax=v[i];}
+    const rng=(emax-emin)||1;
+    g.strokeStyle="#57B4A9"; g.lineWidth=1.4; g.beginPath();
+    for(let i=0;i<t.length;i++){
+      const px=(t[i]/dur)*w, py=envY0+envH-((v[i]-emin)/rng)*envH;
+      i? g.lineTo(px,py):g.moveTo(px,py);
+    }
+    g.stroke();
+    // threshold line
+    const ty=envY0+envH-((thr-emin)/rng)*envH;
+    g.strokeStyle="#E0B450"; g.setLineDash([5,4]); g.lineWidth=1;
+    g.beginPath(); g.moveTo(0,ty); g.lineTo(w,ty); g.stroke(); g.setLineDash([]);
+  }
+  // markers
+  for(const m of markers){
+    const px=(m/dur)*w;
+    g.strokeStyle="#EC6A4E"; g.lineWidth=1.5; g.beginPath();
+    g.moveTo(px,8); g.lineTo(px,h-6); g.stroke();
+    g.fillStyle="#EC6A4E"; g.beginPath(); g.arc(px,10,4,0,7); g.fill();
+  }
+  // playhead
+  if(playing){
+    const cur=playOffset+(ctx().currentTime-playStart);
+    const px=(cur/dur)*w;
+    g.strokeStyle="#E9E7E1"; g.lineWidth=1; g.beginPath(); g.moveTo(px,0); g.lineTo(px,h); g.stroke();
+    requestAnimationFrame(draw);
+  }
+}
+window.addEventListener("resize",draw);
+
+// ================= MARKER INTERACTION =================
+function xToT(clientX){ const r=cv.getBoundingClientRect(); return ((clientX-r.left)/r.width)*dur; }
+let drag=-1, downT=0, lastTap=0;
+cv.addEventListener("pointerdown",e=>{
+  if(!filtMono) return;
+  cv.setPointerCapture(e.pointerId);
+  const t=xToT(e.clientX); downT=performance.now();
+  // nearest marker within 6px
+  const r=cv.getBoundingClientRect(); const pxTol=(6/r.width)*dur;
+  let best=-1,bd=1e9;
+  markers.forEach((m,i)=>{const d=Math.abs(m-t); if(d<bd){bd=d;best=i;}});
+  if(best>=0 && bd<pxTol){
+    // double-tap delete
+    const now=performance.now();
+    if(now-lastTap<300){ markers.splice(best,1); updateReadout(); draw(); drag=-1; lastTap=0; return; }
+    lastTap=now; drag=best;
+  } else {
+    markers.push(t); markers.sort((a,b)=>a-b); updateReadout(); draw();
+  }
+});
+cv.addEventListener("pointermove",e=>{
+  if(drag<0) return;
+  markers[drag]=Math.max(0,Math.min(dur,xToT(e.clientX)));
+  draw();
+});
+cv.addEventListener("pointerup",()=>{ if(drag>=0){markers.sort((a,b)=>a-b);updateReadout();draw();} drag=-1; });
+
+// ================= PLAYBACK + BEAT CLICKS =================
+function stop(){
+  if(srcNode){try{srcNode.stop()}catch(e){}} srcNode=null;
+  clickNodes.forEach(n=>{try{n.stop()}catch(e){}}); clickNodes=[];
+  playing=false; $("play").textContent="▶ Play";
+}
+function play(){
+  if(playing){ stop(); return; }
+  const a=ctx();
+  const useFilt=$("hearFilt").checked && filtMono;
+  const buf=a.createBuffer(1, (useFilt?filtMono.length:rawBuf.length), sr);
+  if(useFilt) buf.copyToChannel(filtMono,0);
+  else buf.copyToChannel(toMono(rawBuf),0);
+  srcNode=a.createBufferSource(); srcNode.buffer=buf;
+  const gain=a.createGain(); gain.gain.value=0.9;
+  srcNode.connect(gain); gain.connect(a.destination);
+  playOffset=0; playStart=a.currentTime; srcNode.start();
+  playing=true; $("play").textContent="■ Stop";
+  // schedule clicks
+  if($("clicks").checked){
+    for(const m of markers){
+      const cg=a.createGain(), osc=a.createOscillator();
+      osc.frequency.value=1500; cg.gain.setValueAtTime(0,a.currentTime+m);
+      cg.gain.linearRampToValueAtTime(0.5,a.currentTime+m+0.002);
+      cg.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+m+0.05);
+      osc.connect(cg); cg.connect(a.destination);
+      osc.start(a.currentTime+m); osc.stop(a.currentTime+m+0.06);
+      clickNodes.push(osc);
+    }
+  }
+  srcNode.onended=()=>{ if(playing) stop(); };
+  requestAnimationFrame(draw);
+}
+
+// ================= WAV ENCODE =================
+function encodeWAV(f32, rate){
+  const n=f32.length, bytes=44+n*2, ab=new ArrayBuffer(bytes), dv=new DataView(ab);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,"RIFF"); dv.setUint32(4,36+n*2,true); ws(8,"WAVE"); ws(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true); dv.setUint32(28,rate*2,true); dv.setUint16(32,2,true);
+  dv.setUint16(34,16,true); ws(36,"data"); dv.setUint32(40,n*2,true);
+  let o=44; for(let i=0;i<n;i++){let s=Math.max(-1,Math.min(1,f32[i])); dv.setInt16(o,s<0?s*32768:s*32767,true); o+=2;}
+  return new Blob([ab],{type:"audio/wav"});
+}
+function dl(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
+
+// steady loop: retime each beat segment to fixed grid
+function buildLoop(targetBpm){
+  if(markers.length<2) return null;
+  const period=60/targetBpm, gridLen=Math.round(period*sr);
+  const out=new Float32Array(gridLen*(markers.length-1));
+  const fade=Math.round(0.004*sr);
+  for(let i=0;i<markers.length-1;i++){
+    const s0=Math.round(markers[i]*sr), s1=Math.round(markers[i+1]*sr);
+    const seg=filtMono.subarray(Math.max(0,s0),Math.min(filtMono.length,s1));
+    const dest=i*gridLen;
+    const L=Math.min(seg.length,gridLen);
+    for(let k=0;k<L;k++){
+      let a=seg[k];
+      if(k<fade) a*=k/fade;
+      if(k>L-fade) a*=(L-k)/fade;
+      out[dest+k]=a;
+    }
+  }
+  return out;
+}
+
+// ================= SYNTHETIC PCG =================
+function makeSynthetic(bpm,noise,jitter,seconds){
+  const rate=48000, n=Math.round(seconds*rate), x=new Float32Array(n);
+  const beatT=[]; let t=0.4; const period=60/bpm;
+  while(t<seconds-0.3){ beatT.push(t); const j=1+((Math.random()*2-1)*jitter/100); t+=period*j; }
+  const thump=(center,freq,amp,decay)=>{
+    const c=Math.round(center*rate), w=Math.round(0.09*rate);
+    for(let i=-20;i<w;i++){const idx=c+i; if(idx<0||idx>=n)continue;
+      const tt=i/rate; if(tt<0)continue;
+      x[idx]+= amp*Math.sin(2*Math.PI*freq*tt)*Math.exp(-tt*decay);}
+  };
+  for(const bt of beatT){
+    thump(bt,52,0.9,55);          // S1 louder, lower
+    thump(bt+period*0.34,68,0.55,70); // S2 softer, higher, at ~systolic gap
+  }
+  if(noise>0){ const a=noise/100*0.25; for(let i=0;i<n;i++) x[i]+=(Math.random()*2-1)*a; }
+  let m=1e-9; for(let i=0;i<n;i++){const v=Math.abs(x[i]); if(v>m)m=v;}
+  for(let i=0;i<n;i++) x[i]/=m;
+  const buf=ctx().createBuffer(1,n,rate); buf.copyToChannel(x,0);
+  return buf;
+}
+
+// ================= WIRING =================
+$("drop").onclick=()=>$("file").click();
+$("file").onchange=e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); };
+["dragover","dragenter"].forEach(ev=>$("drop").addEventListener(ev,e=>{e.preventDefault();$("drop").classList.add("hot");}));
+["dragleave","drop"].forEach(ev=>$("drop").addEventListener(ev,e=>{e.preventDefault();$("drop").classList.remove("hot");}));
+$("drop").addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+
+$("genBtn").onclick=()=>{ $("synthPanel").hidden=!$("synthPanel").hidden; };
+const bind=(id,vid,suf="")=>{ const el=$(id),v=$(vid); const u=()=>v.textContent=el.value+suf; el.oninput=u; u(); };
+bind("sBpm","sBpmV"); bind("sNoise","sNoiseV","%"); bind("sJit","sJitV","%"); bind("sLen","sLenV","s");
+$("sMake").onclick=async()=>{
+  const b=makeSynthetic(+$("sBpm").value,+$("sNoise").value,+$("sJit").value,+$("sLen").value);
+  await useBuffer(b);
+};
+
+// param sliders
+const pv=(id,vid,f)=>{ const el=$(id),v=$(vid); el.oninput=()=>{v.textContent=f(el.value); }; v.textContent=f(el.value); };
+pv("pLo","pLoV",x=>x+" Hz"); pv("pHi","pHiV",x=>x+" Hz");
+pv("pSens","pSensV",x=>(x/100).toFixed(2)); pv("pMax","pMaxV",x=>x);
+["pLo","pHi"].forEach(id=>$(id).addEventListener("change",()=>{ if(rawBuf) analyse(); }));
+["pSens","pMax"].forEach(id=>$(id).addEventListener("input",()=>{ if(env){detect();draw();} }));
+$("pS1").addEventListener("change",()=>{ if(env){detect();draw();} });
+
+$("play").onclick=play;
+$("mClear").onclick=()=>{ markers=[]; updateReadout(); draw(); };
+$("mRedetect").onclick=()=>{ if(env){detect();draw();} };
+
+$("exFilt").onclick=()=>{ if(filtMono) dl(encodeWAV(filtMono,sr),"heartbeat_isolated.wav"); };
+$("exLoop").onclick=()=>{ const l=buildLoop(+$("qBpm").value); if(l) dl(encodeWAV(l,sr),"heartbeat_loop_"+$("qBpm").value+"bpm.wav"); };
+$("exJson").onclick=()=>{
+  const sess={tool:"ACPR Studio v0.1",created:new Date().toISOString(),
+    sampleRate:sr,duration:dur,
+    params:{lowHz:+$("pLo").value,highHz:+$("pHi").value,sensitivity:+$("pSens").value/100,maxHR:+$("pMax").value,s1Only:$("pS1").checked},
+    detectedBpm:+$("oBpm").textContent||null,markersSec:markers};
+  dl(new Blob([JSON.stringify(sess,null,2)],{type:"application/json"}),"acpr_session.json");
+};
+
+// first paint
+resizeCanvas();
+document.addEventListener("pointerdown",()=>ctx(),{once:true});
+</script>
+</body>
+</html>
